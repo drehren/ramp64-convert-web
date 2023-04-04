@@ -34,7 +34,7 @@ jobs:
           version: "latest"
       - name: Wasm Pack
         run: |
-          wasm-pack build --release --target web --d www/pkg --no-typescript
+          wasm-pack build --release --target web -d www/pkg --no-typescript
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Build with Jekyll
