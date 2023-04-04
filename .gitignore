@@ -1,0 +1,6 @@
+**/target
+.vs/
+.vscode/
+
+# ignore cargo.lock
+Cargo.lock

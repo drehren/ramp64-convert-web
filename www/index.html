@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+  <title>RaMp64 SRM Converter</title>
+</head>
+
+<body>
+  <script type="module">
+    import init, { convert } from './pkg/ramp64_convert_web.js';
+    import { get_checked, get_hidden, set_hidden } from './utils.js'
+
+    async function run() {
+      await init(); // this loads the wasm module
+
+      // install handlers
+      function show_mode(is_create) {
+        set_hidden("create_div", !is_create);
+        set_hidden("split_div", is_create);
+        set_hidden("convert", false);
+      }
+
+      document.getElementById("create_btn").addEventListener("click", (_) => show_mode(true));
+      document.getElementById("split_btn").addEventListener("click", (_) => show_mode(false));
+      document.getElementById("is_mupen").addEventListener("click", (_) => {
+        const checked = get_checked(document.getElementById("is_mupen"));
+        set_hidden("mupen_pack", !checked);
+        set_hidden("player_packs", checked);
+      });
+      document.getElementById("convert_btn").addEventListener("click", (_) => {
+        const is_create = !get_hidden("create_div");
+        const is_split = !get_hidden("split_div");
+        convert(is_create, is_split)
+      });
+    }
+
+    run()
+  </script>
+
+  <h1>RaMp64 Srm Convert WEB</h1>
+  <p>Start by clicking one of the buttons bellow.</p>
+  <button id="create_btn">Create a SRM</button>
+  <button id="split_btn">Split a SRM</button>
+
+  <div id="create_div" hidden="true">
+    <p>Select a battery save and/or a controller pack file to create a SRM.</p>
+    <div>
+      <label for="battery_file">Battery File:</label>
+      <input id="battery_file" type="file" accept=".eep, .fla, .sra">
+    </div>
+    <div id="packs">
+      <div>
+        <input type="checkbox" id="is_mupen">
+        <label for="is_mupen">Use Mupen Pack</label>
+      </div>
+      <div id="mupen_pack" hidden="true">
+        <label for="controller_pack_mp">Controller Pack</label>
+        <input id="controller_pack_mp" type="file" accept=".mpk">
+      </div>
+      <div id="player_packs">
+        <div>
+          <label for="controller_pack_1">Controller Pack 1</label>
+          <input id="controller_pack_1" type="file" accept=".mpk, .mpk1">
+        </div>
+        <div>
+          <label for="controller_pack_2">Controller Pack 2</label>
+          <input id="controller_pack_2" type="file" accept=".mpk, .mpk2">
+        </div>
+        <div>
+          <label for="controller_pack_3">Controller Pack 3</label>
+          <input id="controller_pack_3" type="file" accept=".mpk, .mpk3">
+        </div>
+        <div>
+          <label for="controller_pack_4">Controller Pack 4</label>
+          <input id="controller_pack_4" type="file" accept=".mpk, .mpk4">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="split_div" hidden="true">
+    <p>Select a SRM file to split.</p>
+    <div>
+      <label for="srm_file">SRM file:</label>
+      <input id="srm_file" type="file" accept=".srm">
+    </div>
+    <div>
+      <input id="mupen_out" type="checkbox">
+      <label for="mupen_out">Output Mupen Controller Pack File</label>
+    </div>
+  </div>
+
+  <div id="convert" hidden="true">
+    <h4>Additional options</h4>
+    <input id="swap_bytes" name="swap_bytes" type="checkbox">
+    <label for="swap_bytes">Swap EEPROM/FlashRam save bytes</label>
+    <div id="additional_info"></div>
+    <button id="convert_btn">Convert</button>
+  </div>
+
+  <div>
+    <h3>The converted files will appear here</h3>
+    <ul id="download_zone"></ul>
+  </div>
+
+</body>
+
+</html>

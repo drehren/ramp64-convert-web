@@ -1,0 +1,27 @@
+[package]
+name = "ramp64-convert-web"
+description = "A bare-bones web to locally do SRM conversion"
+repository = "https://github.com/drehren/ra_mp64_srm_convert"
+license = "MIT"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+js-sys = "0.3.61"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["File"] }
+wee_alloc = "0.4.5"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[build-dependencies]
+wasm-pack = "0.11"
+
+[profile.release]
+lto = true
+opt-level = "s"
