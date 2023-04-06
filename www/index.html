@@ -34,7 +34,7 @@
         const is_create = !get_hidden("create_div");
         const is_split = !get_hidden("split_div");
         const result = await convert(is_create, is_split);
-        document.getElementById("error_info").innerHTML = result.error;
+        document.getElementById("error_info").innerHTML = result.error ?? null;
       });
     }
 
