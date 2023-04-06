@@ -39,11 +39,24 @@ pub fn entry_point() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn convert(is_create: bool, is_split: bool) -> Result<(), JsValue> {
+pub async fn convert(is_create: bool, is_split: bool) -> Result<ConversionResult, JsValue> {
   match (is_create, is_split) {
     (true, false) => do_create().await,
     (false, true) => do_split().await,
     _ => Err(JsValue::UNDEFINED),
+  }
+}
+
+#[wasm_bindgen]
+pub struct ConversionResult {
+  error: Option<String>,
+}
+
+#[wasm_bindgen]
+impl ConversionResult {
+  #[wasm_bindgen(getter)]
+  pub fn error(&self) -> Option<String> {
+    self.error.clone()
   }
 }
 
@@ -61,7 +74,7 @@ struct CreateParams {
   mupen_pack: Option<web_sys::File>,
 }
 
-async fn do_create() -> Result<(), JsValue> {
+async fn do_create() -> Result<ConversionResult, JsValue> {
   let params = CreateParams {
     battery_file: get_file("battery_file"),
     mupen_pack: if get_checked("is_mupen") {
@@ -132,13 +145,17 @@ async fn do_create() -> Result<(), JsValue> {
     word_swap(buf.flashram_mut());
   }
 
-  Ok(download_file(
-    buf.as_ref(),
-    file_name.map_or("converted.srm".into(), |n| with_extension(&n, ".srm")),
-  ))
+  Ok(if let Some(file_name) = file_name {
+    download_file(buf.as_ref(), with_extension(&file_name, ".srm"));
+    ConversionResult { error: None }
+  } else {
+    ConversionResult {
+      error: Some("No input file(s)".into()),
+    }
+  })
 }
 
-async fn do_split() -> Result<(), JsValue> {
+async fn do_split() -> Result<ConversionResult, JsValue> {
   if let Some(srm_file) = get_file("srm_file") {
     let file_name = srm_file.name();
     let arr_buf = JsFuture::from(srm_file.array_buffer())
@@ -150,7 +167,9 @@ async fn do_split() -> Result<(), JsValue> {
     uint_buf.copy_to(srm_buf.as_mut());
 
     if srm_buf.is_empty() {
-      return Err(JsValue::UNDEFINED);
+      return Ok(ConversionResult {
+        error: Some("Empty SRM".into()),
+      });
     }
 
     let swap_bytes = get_swap_bytes();
@@ -204,9 +223,11 @@ async fn do_split() -> Result<(), JsValue> {
       }
     }
 
-    Ok(())
+    Ok(ConversionResult { error: None })
   } else {
-    Err(JsValue::UNDEFINED)
+    Ok(ConversionResult {
+      error: Some("No input file".into()),
+    })
   }
 }
 

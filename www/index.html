@@ -20,6 +20,7 @@
         set_hidden("create_div", !is_create);
         set_hidden("split_div", is_create);
         set_hidden("convert", false);
+        document.getElementById("error_info").innerHTML = null
       }
 
       document.getElementById("create_btn").addEventListener("click", (_) => show_mode(true));
@@ -29,17 +30,18 @@
         set_hidden("mupen_pack", !checked);
         set_hidden("player_packs", checked);
       });
-      document.getElementById("convert_btn").addEventListener("click", (_) => {
+      document.getElementById("convert_btn").addEventListener("click", async (_) => {
         const is_create = !get_hidden("create_div");
         const is_split = !get_hidden("split_div");
-        convert(is_create, is_split)
+        const result = await convert(is_create, is_split);
+        document.getElementById("error_info").innerHTML = result.error;
       });
     }
 
     run()
   </script>
 
-  <h1>RaMp64 Srm Convert WEB</h1>
+  <h1>RaMp64 Srm Convert</h1>
   <p>Start by clicking one of the buttons bellow.</p>
   <button id="create_btn">Create a SRM</button>
   <button id="split_btn">Split a SRM</button>
@@ -93,11 +95,17 @@
   </div>
 
   <div id="convert" hidden="true">
-    <h4>Additional options</h4>
-    <input id="swap_bytes" name="swap_bytes" type="checkbox">
-    <label for="swap_bytes">Swap EEPROM/FlashRam save bytes</label>
-    <div id="additional_info"></div>
-    <button id="convert_btn">Convert</button>
+    <br/>
+    <b>Additional options</b>
+    <div>
+      <input id="swap_bytes" name="swap_bytes" type="checkbox">
+      <label for="swap_bytes">Swap EEPROM/FlashRam save bytes</label>
+    </div>
+    <div>
+      <br/>
+      <button id="convert_btn">Convert</button>
+      <label id="error_info"></label>
+    </div>
   </div>
 
   <div>
