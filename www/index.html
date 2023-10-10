@@ -9,8 +9,8 @@
 
 <body>
   <script type="module">
-    import init, { convert } from './pkg/ramp64_convert_web.js';
-    import { get_checked, get_hidden, set_hidden } from './utils.js'
+    import init, {convert} from './pkg/ramp64_convert_web.js';
+    import {get_checked, get_hidden, set_hidden} from './utils.js'
 
     async function run() {
       await init(); // this loads the wasm module
@@ -33,7 +33,14 @@
       document.getElementById("convert_btn").addEventListener("click", async (_) => {
         const is_create = !get_hidden("create_div");
         const is_split = !get_hidden("split_div");
-        const result = await convert(is_create, is_split);
+        // ugh .. hate this
+        try {
+          var result = await convert(is_create, is_split);
+        } catch (error) {
+          var result = {
+            error: "Unexpected error: " + error
+          };
+        }
         document.getElementById("error_info").innerHTML = result.error ?? null;
       });
     }
@@ -95,14 +102,14 @@
   </div>
 
   <div id="convert" hidden="true">
-    <br/>
+    <br />
     <b>Additional options</b>
     <div>
       <input id="swap_bytes" name="swap_bytes" type="checkbox">
       <label for="swap_bytes">Swap EEPROM/FlashRam save bytes</label>
     </div>
     <div>
-      <br/>
+      <br />
       <button id="convert_btn">Convert</button>
       <label id="error_info"></label>
     </div>

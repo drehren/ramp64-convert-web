@@ -1,5 +1,6 @@
 mod srm_buf;
 
+use flate2::{Decompress, DecompressError};
 use js_sys::{ArrayBuffer, Uint8Array};
 use srm_buf::SrmBuf;
 use wasm_bindgen::prelude::*;
@@ -23,6 +24,7 @@ mod imported {
 }
 
 use imported::get_swap_bytes;
+
 fn get_checked(id: &str) -> bool {
   imported::get_checked(id.into())
 }
@@ -155,6 +157,27 @@ async fn do_create() -> Result<ConversionResult, JsValue> {
   })
 }
 
+fn unrzip(compressed_data: &[u8], data: &mut [u8]) -> Result<(), DecompressError> {
+  let mut i = 0;
+  let mut o = 0;
+  while i + 4 < compressed_data.len() {
+    let chunk_size = u32::from_le_bytes(compressed_data[i..i + 4].try_into().unwrap());
+    i += 4;
+
+    let mut decompress = Decompress::new(true);
+    decompress.decompress(
+      &compressed_data[i..i + chunk_size as usize],
+      &mut data[o..],
+      flate2::FlushDecompress::Sync,
+    )?;
+
+    o += decompress.total_out() as usize;
+    i += chunk_size as usize;
+  }
+
+  Ok(())
+}
+
 async fn do_split() -> Result<ConversionResult, JsValue> {
   if let Some(srm_file) = get_file("srm_file") {
     let file_name = srm_file.name();
@@ -164,7 +187,40 @@ async fn do_split() -> Result<ConversionResult, JsValue> {
     let uint_buf = Uint8Array::new(&arr_buf);
 
     let mut srm_buf = SrmBuf::new();
-    uint_buf.copy_to(srm_buf.as_mut());
+
+    if uint_buf.length() < 0x48800 {
+      // we cannot copy this, is this maybe an rzip ?
+      let compressed_data = uint_buf.to_vec();
+
+      if b"#RZIPv\x01#" != &compressed_data[..8] {
+        return Ok(ConversionResult {
+          error: Some("SRM is not of the correct size".into()),
+        });
+      }
+      let total_len = (compressed_data.len() > 20)
+        .then(|| u64::from_le_bytes(compressed_data[12..20].try_into().unwrap()));
+      if total_len != Some(0x48800) {
+        return Ok(ConversionResult {
+          error: Some(format!(
+            "Compressed SRM is not of the expected size: {:#?}",
+            total_len
+          )),
+        });
+      }
+
+      // check for rzip
+      if let Err(err) = unrzip(&compressed_data[20..], srm_buf.as_mut()) {
+        return Ok(ConversionResult {
+          error: Some(format!("Could not extract from RZip file: {err}")),
+        });
+      }
+    } else if uint_buf.length() > 0x48800 {
+      return Ok(ConversionResult {
+        error: Some("SRM is not of the correct size".into()),
+      });
+    } else {
+      uint_buf.copy_to(srm_buf.as_mut());
+    }
 
     if srm_buf.is_empty() {
       return Ok(ConversionResult {
