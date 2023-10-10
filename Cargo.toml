@@ -10,6 +10,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+flate2 = "1.0.27"
 js-sys = "0.3.61"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

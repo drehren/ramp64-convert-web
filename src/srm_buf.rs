@@ -69,12 +69,11 @@ impl AsMut<[u8]> for SrmBuf {
 }
 
 macro_rules! srm_internal_data {
-  ($name:ident, $is_empty:expr) => {
+  ($name:ident, $($is_empty:tt)+) => {
     pub(crate) struct $name<'srm>(&'srm [u8]);
     impl<'srm> $name<'srm> {
-      pub(crate) fn is_empty(&self) -> bool {
-        $is_empty(self)
-      }
+      pub(crate) $($is_empty)+
+
     }
     impl<'srm> AsRef<[u8]> for $name<'srm> {
       fn as_ref(&self) -> &[u8] {
@@ -84,20 +83,25 @@ macro_rules! srm_internal_data {
   };
 
   ($name:ident) => {
-    srm_internal_data!($name, |x: &$name| x
+    srm_internal_data!($name, fn is_empty(&self) -> bool {
+      self
       .0
       .iter()
       .rposition(|b| *b != 0xff)
-      .is_none());
+      .is_none()
+    });
   };
 }
 
 srm_internal_data!(Eeprom);
 srm_internal_data!(FlashRam);
 srm_internal_data!(Sram);
-srm_internal_data!(ControllerPack, |me: &ControllerPack| {
-  controller_pack::is_empty(me.0)
-});
+srm_internal_data!(
+  ControllerPack,
+  fn is_empty(&self) -> bool {
+    controller_pack::is_empty(self.0)
+  }
+);
 
 impl<'srm> Eeprom<'srm> {
   pub(crate) fn is_4k(&self) -> bool {
