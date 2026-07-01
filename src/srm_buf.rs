@@ -48,11 +48,25 @@ impl SrmBuf {
     &mut self.data[0x20800..0x28800]
   }
 
+  pub fn sram_bizhawk(&self) -> Sram<'_> {
+    Sram(&self.data[0x40800..0x48800])
+  }
+  pub fn sram_bizhawk_mut(&mut self) -> &mut [u8] {
+    &mut self.data[0x40800..0x48800]
+  }
+
   pub fn flashram(&self) -> FlashRam<'_> {
     FlashRam(&self.data[0x28800..0x48800])
   }
   pub fn flashram_mut(&mut self) -> &mut [u8] {
     &mut self.data[0x28800..0x48800]
+  }
+
+  pub fn flashram_bizhawk(&self) -> FlashRam<'_> {
+    FlashRam(&self.data[0x20800..0x40800])
+  }
+  pub fn flashram_bizhawk_mut(&mut self) -> &mut [u8] {
+    &mut self.data[0x20800..0x40800]
   }
 }
 

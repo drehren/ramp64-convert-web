@@ -104,13 +104,26 @@ async fn do_create() -> Result<ConversionResult, JsValue> {
       .and_then(|js| js.dyn_into::<ArrayBuffer>())?;
 
     let battery_buf_view = Uint8Array::new(&battery_arr_buf);
+
     // SAFETY: the match ensures an appropriate buffer length
     match battery_buf_view.byte_length() {
       0x1..=0x800 => unsafe { battery_buf_view.raw_copy_to_ptr(buf.eeprom_mut().as_mut_ptr()) },
-      0x801..=0x8000 => unsafe { battery_buf_view.raw_copy_to_ptr(buf.sram_mut().as_mut_ptr()) },
-      0x8001..=0x20000 => unsafe {
-        battery_buf_view.raw_copy_to_ptr(buf.flashram_mut().as_mut_ptr())
-      },
+      0x801..=0x8000 => {
+        let data = if !get_checked("is_bizhawk_create") {
+          buf.sram_mut()
+        } else {
+          buf.sram_bizhawk_mut()
+        };
+        unsafe { battery_buf_view.raw_copy_to_ptr(data.as_mut_ptr()) }
+      }
+      0x8001..=0x20000 => {
+        let data = if !get_checked("is_bizhawk_create") {
+          buf.flashram_mut()
+        } else {
+          buf.flashram_bizhawk_mut()
+        };
+        unsafe { battery_buf_view.raw_copy_to_ptr(data.as_mut_ptr()) }
+      }
       _ => {}
     }
   }
@@ -145,7 +158,12 @@ async fn do_create() -> Result<ConversionResult, JsValue> {
   }
 
   Ok(if let Some(file_name) = file_name {
-    download_file(buf.as_ref(), with_extension(&file_name, ".srm"));
+    let ext = if !get_checked("is_bizhawk_create") {
+      ".srm"
+    } else {
+      ".SaveRAM"
+    };
+    download_file(buf.as_ref(), with_extension(&file_name, ext));
     ConversionResult { error: None }
   } else {
     ConversionResult {
@@ -227,6 +245,8 @@ async fn do_split() -> Result<ConversionResult, JsValue> {
 
     let swap_bytes = get_swap_bytes();
 
+    let is_bizhawk = get_checked("is_bizhawk");
+
     if !srm_buf.eeprom().is_empty() {
       if swap_bytes {
         word_swap(srm_buf.eeprom_mut());
@@ -237,16 +257,40 @@ async fn do_split() -> Result<ConversionResult, JsValue> {
         srm_buf.eeprom()
       };
       download_file(eep.as_ref(), with_extension(&file_name, ".eep"));
-    } else if !srm_buf.sram().is_empty() {
-      download_file(srm_buf.sram().as_ref(), with_extension(&file_name, ".sra"));
-    } else if !srm_buf.flashram().is_empty() {
-      if swap_bytes {
-        word_swap(srm_buf.flashram_mut());
+    }
+    if !is_bizhawk {
+      if !srm_buf.sram().is_empty() {
+        download_file(srm_buf.sram().as_ref(), with_extension(&file_name, ".sra"));
       }
-      download_file(
-        srm_buf.flashram().as_ref(),
-        with_extension(&file_name, ".fla"),
-      );
+    } else {
+      if !srm_buf.sram_bizhawk().is_empty() {
+        download_file(
+          srm_buf.sram_bizhawk().as_ref(),
+          with_extension(&file_name, ".sra"),
+        );
+      }
+    }
+
+    if !is_bizhawk {
+      if !srm_buf.flashram().is_empty() {
+        if swap_bytes {
+          word_swap(srm_buf.flashram_mut());
+        }
+        download_file(
+          srm_buf.flashram().as_ref(),
+          with_extension(&file_name, ".fla"),
+        );
+      } else {
+        if !srm_buf.flashram_bizhawk().is_empty() {
+          if swap_bytes {
+            word_swap(srm_buf.flashram_bizhawk_mut());
+          }
+          download_file(
+            srm_buf.flashram_bizhawk().as_ref(),
+            with_extension(&file_name, ".fla"),
+          );
+        }
+      }
     }
 
     if get_checked("mupen_out") {
