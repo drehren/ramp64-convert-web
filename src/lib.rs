@@ -6,9 +6,6 @@ use srm_buf::SrmBuf;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 mod imported {
   use js_sys::{JsString, Uint8Array};
   use wasm_bindgen::prelude::*;

@@ -10,14 +10,14 @@ For a GUI application, see [ramp64-convert-gui](https://github.com/drehren/ramp6
 
 ## Building 
 
-To build this, you'll need [rust](https://www.rust-lang.org) (>=1.66) and [wasm-pack](https://rustwasm.github.io/wasm-pack/) (>=0.11).
+To build this, you'll need [rust](https://www.rust-lang.org) (>=1.94) and [wasm-pack](https://rustwasm.github.io/wasm-pack/) (>=0.15).
 
 If you install wasm-pack by using `cargo install wasm-pack` you'll need to have `perl` and a C/C++ compiler installed as well.
 
 Then, from the root folder of this repo:
 
 ```sh
-wasm-pack --release --target web -d www/pkg
+wasm-pack build --release --target web -d www/pkg
 ```
 
 After it completes, any web server can host it from `www`.

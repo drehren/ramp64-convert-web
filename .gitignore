@@ -1,6 +1,7 @@
 **/target
 .vs/
 .vscode/
+.DS_Store
 
 # ignore cargo.lock
 Cargo.lock

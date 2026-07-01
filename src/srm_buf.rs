@@ -26,15 +26,15 @@ impl SrmBuf {
     &mut self.data[..0x800]
   }
 
-  pub fn controller_pack_iter(&self) -> impl Iterator<Item = ControllerPack> {
+  pub fn controller_pack_iter(&self) -> impl Iterator<Item = ControllerPack<'_>> {
     self.data[0x800..0x20800].chunks(0x8000).map(ControllerPack)
   }
 
-  pub fn controller_pack_iter_mut(&mut self) -> std::slice::ChunksMut<u8> {
+  pub fn controller_pack_iter_mut(&mut self) -> std::slice::ChunksMut<'_, u8> {
     self.data[0x800..0x20800].chunks_mut(0x8000)
   }
 
-  pub fn full_controller_pack(&self) -> ControllerPack {
+  pub fn full_controller_pack(&self) -> ControllerPack<'_> {
     ControllerPack(&self.data[0x800..0x20800])
   }
   pub fn full_controller_pack_mut(&mut self) -> &mut [u8] {
