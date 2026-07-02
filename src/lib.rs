@@ -1,8 +1,10 @@
-mod srm_buf;
+mod container_buf;
 
+use std::str::FromStr;
+
+use container_buf::ContainerBuf;
 use flate2::{Decompress, DecompressError};
 use js_sys::{ArrayBuffer, Uint8Array};
-use srm_buf::SrmBuf;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
@@ -17,6 +19,7 @@ mod imported {
     pub(crate) fn get_checked(id: JsString) -> bool;
     pub(crate) fn get_file(id: JsString) -> Option<File>;
     pub(crate) fn put_download(data: Uint8Array, file_name: JsString);
+    pub(crate) fn get_radio_value(name: JsString) -> Option<JsString>;
   }
 }
 
@@ -31,6 +34,9 @@ fn get_file(id: &str) -> Option<web_sys::File> {
 fn put_download(data: Uint8Array, file_name: String) {
   imported::put_download(data, file_name.into())
 }
+fn get_radio_value(name: &str) -> Option<String> {
+  imported::get_radio_value(name.into()).map(|s| s.into())
+}
 
 #[wasm_bindgen(start)]
 pub fn entry_point() -> Result<(), JsValue> {
@@ -38,11 +44,33 @@ pub fn entry_point() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn convert(is_create: bool, is_split: bool) -> Result<ConversionResult, JsValue> {
+pub async fn convert(is_create: bool, is_split: bool) -> ConversionResult {
   match (is_create, is_split) {
-    (true, false) => do_create().await,
-    (false, true) => do_split().await,
-    _ => Err(JsValue::UNDEFINED),
+    (true, false) => {
+      if get_checked("retroarch_fmt") {
+        if let Some(err) = do_create(ContainerType::RetroArch).await.error {
+          return ConversionResult { error: Some(err) };
+        }
+      }
+      if get_checked("bizhawk_fmt") {
+        if let Some(err) = do_create(ContainerType::BizHawk).await.error {
+          return ConversionResult { error: Some(err) };
+        }
+      }
+      ConversionResult { error: None }
+    }
+    (false, true) => match get_radio_value("container") {
+      Some(container_name) => match ContainerType::from_str(&container_name) {
+        Ok(container) => do_split(container).await,
+        Err(()) => ConversionResult {
+          error: Some("Container invalid value".into()),
+        },
+      },
+      None => ConversionResult {
+        error: Some("Container invalid value".into()),
+      },
+    },
+    _ => unreachable!(),
   }
 }
 
@@ -69,39 +97,63 @@ fn word_swap(buf: &mut [u8]) {
 #[derive(Default)]
 struct CreateParams {
   battery_file: Option<web_sys::File>,
-  controller_packs: [Option<web_sys::File>; 4],
-  mupen_pack: Option<web_sys::File>,
+  controller_paks: [Option<web_sys::File>; 4],
+  mupen_pak: Option<web_sys::File>,
 }
 
-async fn do_create() -> Result<ConversionResult, JsValue> {
+enum ContainerType {
+  RetroArch,
+  BizHawk,
+}
+
+impl FromStr for ContainerType {
+  type Err = ();
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      "RetroArch" => Ok(ContainerType::RetroArch),
+      "BizHawk" => Ok(ContainerType::BizHawk),
+      _ => Err(()),
+    }
+  }
+}
+
+async fn do_create(container: ContainerType) -> ConversionResult {
   let params = CreateParams {
     battery_file: get_file("battery_file"),
-    mupen_pack: if get_checked("is_mupen") {
-      get_file("controller_pack_mp")
+    mupen_pak: if get_checked("is_mupen") {
+      get_file("controller_pak_mp")
     } else {
       None
     },
-    controller_packs: [
-      get_file("controller_pack_1"),
-      get_file("controller_pack_2"),
-      get_file("controller_pack_3"),
-      get_file("controller_pack_4"),
+    controller_paks: [
+      get_file("controller_pak_1"),
+      get_file("controller_pak_2"),
+      get_file("controller_pak_3"),
+      get_file("controller_pak_4"),
     ],
   };
 
-  // srm data
-  let mut buf = SrmBuf::new();
+  // container data
+  let mut buf = ContainerBuf::new();
 
   // now try to convert stuff
-
   let mut file_name = None;
 
   if let Some(battery) = &params.battery_file {
     file_name = Some(battery.name());
 
-    let battery_arr_buf = JsFuture::from(battery.array_buffer())
+    let battery_arr_buf = match JsFuture::from(battery.array_buffer())
       .await
-      .and_then(|js| js.dyn_into::<ArrayBuffer>())?;
+      .and_then(|js| js.dyn_into::<ArrayBuffer>())
+    {
+      Ok(arr) => arr,
+      Err(val) => {
+        return ConversionResult {
+          error: val.as_string(),
+        }
+      }
+    };
 
     let battery_buf_view = Uint8Array::new(&battery_arr_buf);
 
@@ -109,59 +161,86 @@ async fn do_create() -> Result<ConversionResult, JsValue> {
     match battery_buf_view.byte_length() {
       0x1..=0x800 => unsafe { battery_buf_view.raw_copy_to_ptr(buf.eeprom_mut().as_mut_ptr()) },
       0x801..=0x8000 => {
-        let data = if !get_checked("is_bizhawk_create") {
-          buf.sram_mut()
-        } else {
-          buf.sram_bizhawk_mut()
+        let data = match container {
+          ContainerType::RetroArch => buf.sram_mut(),
+          ContainerType::BizHawk => buf.sram_bizhawk_mut(),
         };
         unsafe { battery_buf_view.raw_copy_to_ptr(data.as_mut_ptr()) }
       }
       0x8001..=0x20000 => {
-        let data = if !get_checked("is_bizhawk_create") {
-          buf.flashram_mut()
-        } else {
-          buf.flashram_bizhawk_mut()
+        let data = match container {
+          ContainerType::RetroArch => buf.flashram_mut(),
+          ContainerType::BizHawk => buf.flashram_bizhawk_mut(),
         };
         unsafe { battery_buf_view.raw_copy_to_ptr(data.as_mut_ptr()) }
       }
       _ => {}
     }
   }
+
   for (cp, cp_buf) in params
-    .controller_packs
+    .controller_paks
     .iter()
-    .zip(buf.controller_pack_iter_mut())
+    .zip(buf.controller_pak_iter_mut())
   {
     if let Some(cp) = cp {
       if file_name.is_none() {
         file_name = Some(cp.name())
       }
-      let array_buf = JsFuture::from(cp.array_buffer())
+      let array_buf = match JsFuture::from(cp.array_buffer())
         .await
-        .and_then(|js| js.dyn_into::<ArrayBuffer>())?;
+        .and_then(|js| js.dyn_into::<ArrayBuffer>())
+      {
+        Ok(arr) => arr,
+        Err(val) => {
+          return ConversionResult {
+            error: val.as_string(),
+          }
+        }
+      };
       Uint8Array::new(&array_buf).copy_to(cp_buf);
     }
   }
-  if let Some(mp) = &params.mupen_pack {
+  if let Some(mp) = &params.mupen_pak {
     if file_name.is_none() {
       file_name = Some(mp.name())
     }
-    let arr_buf = JsFuture::from(mp.array_buffer())
+    let arr_buf = match JsFuture::from(mp.array_buffer())
       .await
-      .and_then(|js| js.dyn_into::<ArrayBuffer>())?;
-    Uint8Array::new(&arr_buf).copy_to(buf.full_controller_pack_mut())
+      .and_then(|js| js.dyn_into::<ArrayBuffer>())
+    {
+      Ok(arr) => arr,
+      Err(val) => {
+        return ConversionResult {
+          error: val.as_string(),
+        }
+      }
+    };
+    Uint8Array::new(&arr_buf).copy_to(buf.full_controller_pak_mut())
   }
 
   if get_swap_bytes() {
-    word_swap(buf.eeprom_mut());
-    word_swap(buf.flashram_mut());
+    if !buf.eeprom().is_empty() {
+      word_swap(buf.eeprom_mut());
+    }
+    match container {
+      ContainerType::RetroArch => {
+        if !buf.flashram().is_empty() {
+          word_swap(buf.flashram_mut());
+        }
+      }
+      ContainerType::BizHawk => {
+        if !buf.flashram_bizhawk().is_empty() {
+          word_swap(buf.flashram_bizhawk_mut());
+        }
+      }
+    }
   }
 
-  Ok(if let Some(file_name) = file_name {
-    let ext = if !get_checked("is_bizhawk_create") {
-      ".srm"
-    } else {
-      ".SaveRAM"
+  if let Some(file_name) = file_name {
+    let ext = match container {
+      ContainerType::RetroArch => ".srm",
+      ContainerType::BizHawk => ".SaveRAM",
     };
     download_file(buf.as_ref(), with_extension(&file_name, ext));
     ConversionResult { error: None }
@@ -169,7 +248,7 @@ async fn do_create() -> Result<ConversionResult, JsValue> {
     ConversionResult {
       error: Some("No input file(s)".into()),
     }
-  })
+  }
 }
 
 fn unrzip(compressed_data: &[u8], data: &mut [u8]) -> Result<(), DecompressError> {
@@ -193,100 +272,110 @@ fn unrzip(compressed_data: &[u8], data: &mut [u8]) -> Result<(), DecompressError
   Ok(())
 }
 
-async fn do_split() -> Result<ConversionResult, JsValue> {
-  if let Some(srm_file) = get_file("srm_file") {
-    let file_name = srm_file.name();
-    let arr_buf = JsFuture::from(srm_file.array_buffer())
+async fn do_split(container: ContainerType) -> ConversionResult {
+  if let Some(container_file) = get_file("container_file") {
+    let file_name = container_file.name();
+    let arr_buf = match JsFuture::from(container_file.array_buffer())
       .await
-      .and_then(|js| js.dyn_into::<ArrayBuffer>())?;
+      .and_then(|js| js.dyn_into::<ArrayBuffer>())
+    {
+      Ok(arr) => arr,
+      Err(val) => {
+        return ConversionResult {
+          error: val.as_string(),
+        }
+      }
+    };
     let uint_buf = Uint8Array::new(&arr_buf);
 
-    let mut srm_buf = SrmBuf::new();
+    let mut buf = ContainerBuf::new();
 
     if uint_buf.length() < 0x48800 {
       // we cannot copy this, is this maybe an rzip ?
       let compressed_data = uint_buf.to_vec();
 
       if b"#RZIPv\x01#" != &compressed_data[..8] {
-        return Ok(ConversionResult {
+        return ConversionResult {
           error: Some("SRM is not of the correct size".into()),
-        });
+        };
       }
       let total_len = (compressed_data.len() > 20)
         .then(|| u64::from_le_bytes(compressed_data[12..20].try_into().unwrap()));
       if total_len != Some(0x48800) {
-        return Ok(ConversionResult {
+        return ConversionResult {
           error: Some(format!(
             "Compressed SRM is not of the expected size: {:#?}",
             total_len
           )),
-        });
+        };
       }
 
       // check for rzip
-      if let Err(err) = unrzip(&compressed_data[20..], srm_buf.as_mut()) {
-        return Ok(ConversionResult {
+      if let Err(err) = unrzip(&compressed_data[20..], buf.as_mut()) {
+        return ConversionResult {
           error: Some(format!("Could not extract from RZip file: {err}")),
-        });
+        };
       }
     } else if uint_buf.length() > 0x48800 {
-      return Ok(ConversionResult {
+      return ConversionResult {
         error: Some("SRM is not of the correct size".into()),
-      });
+      };
     } else {
-      uint_buf.copy_to(srm_buf.as_mut());
+      uint_buf.copy_to(buf.as_mut());
     }
 
-    if srm_buf.is_empty() {
-      return Ok(ConversionResult {
+    if buf.is_empty() {
+      return ConversionResult {
         error: Some("Empty SRM".into()),
-      });
+      };
     }
 
     let swap_bytes = get_swap_bytes();
 
-    let is_bizhawk = get_checked("is_bizhawk");
-
-    if !srm_buf.eeprom().is_empty() {
+    if !buf.eeprom().is_empty() {
       if swap_bytes {
-        word_swap(srm_buf.eeprom_mut());
+        word_swap(buf.eeprom_mut());
       }
-      let eep = if srm_buf.eeprom().is_4k() {
-        srm_buf.eeprom().as_4k()
+      let eep = if buf.eeprom().is_4k() {
+        buf.eeprom().as_4k()
       } else {
-        srm_buf.eeprom()
+        buf.eeprom()
       };
       download_file(eep.as_ref(), with_extension(&file_name, ".eep"));
     }
-    if !is_bizhawk {
-      if !srm_buf.sram().is_empty() {
-        download_file(srm_buf.sram().as_ref(), with_extension(&file_name, ".sra"));
+
+    match container {
+      ContainerType::RetroArch => {
+        if !buf.sram().is_empty() {
+          download_file(buf.sram().as_ref(), with_extension(&file_name, ".sra"));
+        }
       }
-    } else {
-      if !srm_buf.sram_bizhawk().is_empty() {
-        download_file(
-          srm_buf.sram_bizhawk().as_ref(),
-          with_extension(&file_name, ".sra"),
-        );
+      ContainerType::BizHawk => {
+        if !buf.sram_bizhawk().is_empty() {
+          download_file(
+            buf.sram_bizhawk().as_ref(),
+            with_extension(&file_name, ".sra"),
+          );
+        }
       }
     }
 
-    if !is_bizhawk {
-      if !srm_buf.flashram().is_empty() {
-        if swap_bytes {
-          word_swap(srm_buf.flashram_mut());
-        }
-        download_file(
-          srm_buf.flashram().as_ref(),
-          with_extension(&file_name, ".fla"),
-        );
-      } else {
-        if !srm_buf.flashram_bizhawk().is_empty() {
+    match container {
+      ContainerType::RetroArch => {
+        if !buf.flashram().is_empty() {
           if swap_bytes {
-            word_swap(srm_buf.flashram_bizhawk_mut());
+            word_swap(buf.flashram_mut());
+          }
+          download_file(buf.flashram().as_ref(), with_extension(&file_name, ".fla"));
+        }
+      }
+      ContainerType::BizHawk => {
+        if !buf.flashram_bizhawk().is_empty() {
+          if swap_bytes {
+            word_swap(buf.flashram_bizhawk_mut());
           }
           download_file(
-            srm_buf.flashram_bizhawk().as_ref(),
+            buf.flashram_bizhawk().as_ref(),
             with_extension(&file_name, ".fla"),
           );
         }
@@ -294,14 +383,14 @@ async fn do_split() -> Result<ConversionResult, JsValue> {
     }
 
     if get_checked("mupen_out") {
-      if !srm_buf.full_controller_pack().is_empty() {
+      if !buf.full_controller_pak().is_empty() {
         download_file(
-          srm_buf.full_controller_pack().as_ref(),
+          buf.full_controller_pak().as_ref(),
           with_extension(&file_name, ".mpk"),
         );
       }
     } else {
-      for (i, cp) in srm_buf.controller_pack_iter().enumerate() {
+      for (i, cp) in buf.controller_pak_iter().enumerate() {
         if cp.is_empty() {
           continue;
         }
@@ -320,11 +409,11 @@ async fn do_split() -> Result<ConversionResult, JsValue> {
       }
     }
 
-    Ok(ConversionResult { error: None })
+    ConversionResult { error: None }
   } else {
-    Ok(ConversionResult {
+    ConversionResult {
       error: Some("No input file".into()),
-    })
+    }
   }
 }
 

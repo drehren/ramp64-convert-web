@@ -1,11 +1,11 @@
-pub(crate) struct SrmBuf {
+pub(crate) struct ContainerBuf {
   data: Box<[u8; 0x48800]>,
 }
 
-impl SrmBuf {
+impl ContainerBuf {
   pub fn new() -> Self {
     let mut data = Box::new([0xff; 0x48800]);
-    controller_pack::init(&mut data[0x800..0x8800]);
+    controller_pak::init(&mut data[0x800..0x8800]);
     data.copy_within(0x800..0x8800, 0x8800);
     data.copy_within(0x800..0x8800, 0x10800);
     data.copy_within(0x800..0x8800, 0x18800);
@@ -16,7 +16,7 @@ impl SrmBuf {
     self.eeprom().is_empty()
       && self.sram().is_empty()
       && self.flashram().is_empty()
-      && self.controller_pack_iter().all(|cp| cp.is_empty())
+      && self.controller_pak_iter().all(|cp| cp.is_empty())
   }
 
   pub fn eeprom(&self) -> Eeprom<'_> {
@@ -26,18 +26,18 @@ impl SrmBuf {
     &mut self.data[..0x800]
   }
 
-  pub fn controller_pack_iter(&self) -> impl Iterator<Item = ControllerPack<'_>> {
-    self.data[0x800..0x20800].chunks(0x8000).map(ControllerPack)
+  pub fn controller_pak_iter(&self) -> impl Iterator<Item = ControllerPak<'_>> {
+    self.data[0x800..0x20800].chunks(0x8000).map(ControllerPak)
   }
 
-  pub fn controller_pack_iter_mut(&mut self) -> std::slice::ChunksMut<'_, u8> {
+  pub fn controller_pak_iter_mut(&mut self) -> std::slice::ChunksMut<'_, u8> {
     self.data[0x800..0x20800].chunks_mut(0x8000)
   }
 
-  pub fn full_controller_pack(&self) -> ControllerPack<'_> {
-    ControllerPack(&self.data[0x800..0x20800])
+  pub fn full_controller_pak(&self) -> ControllerPak<'_> {
+    ControllerPak(&self.data[0x800..0x20800])
   }
-  pub fn full_controller_pack_mut(&mut self) -> &mut [u8] {
+  pub fn full_controller_pak_mut(&mut self) -> &mut [u8] {
     &mut self.data[0x800..0x20800]
   }
 
@@ -70,13 +70,13 @@ impl SrmBuf {
   }
 }
 
-impl AsRef<[u8]> for SrmBuf {
+impl AsRef<[u8]> for ContainerBuf {
   fn as_ref(&self) -> &[u8] {
     self.data.as_ref()
   }
 }
 
-impl AsMut<[u8]> for SrmBuf {
+impl AsMut<[u8]> for ContainerBuf {
   fn as_mut(&mut self) -> &mut [u8] {
     self.data.as_mut()
   }
@@ -111,9 +111,9 @@ srm_internal_data!(Eeprom);
 srm_internal_data!(FlashRam);
 srm_internal_data!(Sram);
 srm_internal_data!(
-  ControllerPack,
+  ControllerPak,
   fn is_empty(&self) -> bool {
-    controller_pack::is_empty(self.0)
+    controller_pak::is_empty(self.0)
   }
 );
 
@@ -127,7 +127,7 @@ impl<'srm> Eeprom<'srm> {
   }
 }
 
-mod controller_pack {
+mod controller_pak {
   fn checksum1(buf: &[u8]) -> [u8; 2] {
     let mut sum1 = 0u16;
     for half_word in buf[0..24].chunks(2) {

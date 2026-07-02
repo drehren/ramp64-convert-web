@@ -41,3 +41,15 @@ export function put_download(data, file_name) {
   const dl_zone = document.getElementById("download_zone");
   dl_zone.appendChild(item);
 }
+export function get_radio_value(name) {
+  if (typeof name === "string" || name instanceof String) {
+    const items = document.getElementsByName(name);
+    for (let i = 0; i < items.length; ++i) {
+      const elem = items[i];
+      if (elem.type == "radio" && elem.checked) {
+        return elem.value;
+      }
+    }
+  }
+  return null;
+}
